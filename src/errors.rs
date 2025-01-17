@@ -2,6 +2,13 @@ use std::fmt::Display;
 
 // TODO: Alter so that it says {stringify($name)}: {...error args}
 
+pub trait Throwable {
+    fn message(&self) -> String;
+    fn cause<T: Throwable + std::error::Error + 'static>(&self) -> Option<&T>;
+
+    fn throw(&self) -> !;
+}
+
 macro_rules! define_error {
     ($name: ident) => {
         #[derive(Debug, Clone, PartialEq)]
@@ -20,6 +27,19 @@ macro_rules! define_error {
                 Self { message }
             }
         }
+
+        impl Throwable for $name {
+            fn message(&self) -> String {
+                self.message.clone()
+            }
+            fn cause<T: Throwable>(&self) -> Option<&T> {
+                None
+            }
+
+            fn throw(&self) -> ! {
+                panic!("{}", self.message)
+            }
+        }
     };
     ($name: ident, $($arg: ident # $type: ty),+) => {
         pub struct $name {
@@ -36,6 +56,19 @@ macro_rules! define_error {
         impl $name {
             pub fn new(message: String, $($arg: $type),+) -> Self {
                 Self { message, $($arg),+ }
+            }
+        }
+
+        impl Throwable for $name {
+            fn message(&self) -> String {
+                self.message.clone()
+            }
+            fn cause<T: Throwable>(&self) -> Option<&T> {
+                None
+            }
+
+            fn throw(&self) -> ! {
+                panic!("{}", self.message)
             }
         }
     };
@@ -62,6 +95,21 @@ macro_rules! define_std_error {
         impl $name {
             pub fn new(message: String, cause: Option<Box<dyn std::error::Error>>) -> Self {
                 Self { message, cause }
+            }
+        }
+
+        impl Throwable for $name {
+            fn message(&self) -> String {
+                self.message.clone()
+            }
+            fn cause<T: Throwable + std::error::Error + 'static>(&self) -> Option<&T> {
+                self.cause
+                    .as_ref()
+                    .map(|cause| cause.downcast_ref::<T>().unwrap().clone())
+            }
+
+            fn throw(&self) -> ! {
+                panic!("{}", self.message)
             }
         }
     };
@@ -476,6 +524,8 @@ pub mod security {
 
 pub mod time {
     //use super::*;
+
+    use crate::errors::Throwable;
 
     define_std_error!(DateTimeException);
     define_std_error!(ZoneRulesException);
